@@ -107,7 +107,7 @@ for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and ad
   assert.equal((await call('/api/admin/orders', { cookie: admin.cookie })).status, 401);
 });
 
-for (const backend of ['sqlite', 'postgres']) test(`Cloudflare visitor IP uses the edge address and ignores other forwarded headers (${backend})`, { skip: backend === 'postgres' && !process.env.FLASH_TEST_DATABASE_URL }, async t => {
+for (const mode of ['cloudflare', 'render-legacy']) for (const backend of ['sqlite', 'postgres']) test(`Cloudflare visitor IP uses the edge address and ignores other forwarded headers (${backend}, ${mode})`, { skip: backend === 'postgres' && !process.env.FLASH_TEST_DATABASE_URL }, async t => {
   const data = mkdtempSync(join(tmpdir(), 'flash-cloudflare-'));
   const password = randomBytes(16).toString('hex');
   let pool, schema, databaseUrl = '';
@@ -120,7 +120,7 @@ for (const backend of ['sqlite', 'postgres']) test(`Cloudflare visitor IP uses t
     databaseUrl = url.toString();
   }
   const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], {
-    env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: '0', FLASH_TRUST_PROXY: 'cloudflare', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password },
+    env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: '0', FLASH_TRUST_PROXY: mode === 'render-legacy' ? '1' : 'cloudflare', RENDER: mode === 'render-legacy' ? 'true' : '', RENDER_GIT_COMMIT: '1234567abcdef', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(async () => {
@@ -143,9 +143,10 @@ for (const backend of ['sqlite', 'postgres']) test(`Cloudflare visitor IP uses t
   const login = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-requested-with': 'flash-app' }, body: JSON.stringify({ email: 'admin@example.test', password }) });
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie').split(';')[0];
-  const response = await fetch(base + '/api/admin/visits', { headers: { cookie } });
+  const response = await fetch(base + '/api/admin/visits', { headers: { cookie, 'cf-connecting-ip': '198.51.100.99' } });
   assert.equal(response.status, 200);
-  const { visits } = await response.json();
+  const { visits, tracking } = await response.json();
+  assert.deepEqual(tracking, { source: 'cloudflare', currentIp: '198.51.100.99', release: '1234567' });
   assert.deepEqual(visits.map(visit => visit.ip).sort(), ['198.51.100.23', '198.51.100.24', '2001:db8::23'].sort());
 });
 

@@ -63,7 +63,15 @@ Browser document navigations are recorded using `Sec-Fetch-Dest: document` or, f
 
 <!-- coderabbit-ai-generated-section:v1:c810f25104fe58d4e31638022ca73cbd9e770fee1f338620666bb0d61cee7995 -->
 
-Without `FLASH_TRUST_PROXY`, the server uses the socket address and ignores forwarded headers. With `FLASH_TRUST_PROXY=1`, it uses the final `X-Forwarded-For` entry; enable this only behind a trusted proxy that appends the client address. With `FLASH_TRUST_PROXY=cloudflare`, used by the Render configuration, it uses `CF-Connecting-IP` supplied by Cloudflare and skips recording if that header is missing or invalid. Enable this mode only when requests cannot bypass a trusted Cloudflare proxy; otherwise clients can forge the header. Verify the deployed host’s proxy behavior. Existing visit records are not rewritten, and VPNs or other proxies can mask a visitor’s own address.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:6ae22fb0f59a4d7e53f23f01880de203947f66465fdcfa90e035f7065916a7c5 -->
+
+Without `FLASH_TRUST_PROXY`, the server uses the socket address and ignores forwarded headers. With `FLASH_TRUST_PROXY=1`, it uses the final `X-Forwarded-For` entry outside Render; enable this only behind a trusted proxy that appends the client address. With `FLASH_TRUST_PROXY=cloudflare`, or the legacy value `1` when the platform sets `RENDER=true`, it uses `CF-Connecting-IP` supplied by Cloudflare and skips recording if that header is missing or invalid. This lets Render deploy the repair before Blueprint environment synchronization completes. Enable this mode only when requests cannot bypass a trusted Cloudflare proxy; otherwise clients can forge the header. Existing visit records are not rewritten; VPNs or other proxies can mask a visitor’s own address.
+
+The admin-only visit API also returns the current administrator request IP, the effective source, and the Render Git revision prefix. The visitor panel refreshes every five seconds while visible, without recording those API requests as visits. The dashboard includes request totals, expandable request details, a product selector and request form, and an account page at `/account`. All products remain simulations and no actual payments or token transfers are added.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 

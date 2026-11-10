@@ -1,5 +1,5 @@
 const $ = selector => document.querySelector(selector);
-const formatPrice = cents => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+const formatPrice = cents => new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'USD' }).format(cents / 100);
 function parsePrice(value) {
   if (!/^\d+(?:\.\d{1,2})?$/.test(value)) throw new Error('Enter a price with up to two decimal places.');
   const [whole, fraction = ''] = value.split('.');
@@ -25,7 +25,7 @@ function message(text, success = false) {
 function showPage() { $('#home-page').hidden = true; $('#page-content').hidden = false; }
 function setupNav(user) {
   const nav = $('#auth-nav');
-  if (user) nav.innerHTML = `${user.role === 'admin' ? '<a href="/admin">Admin</a>' : ''}<a href="/dashboard">Dashboard</a><button class="logout" id="nav-logout" type="button">Sign out</button>`;
+  if (user) nav.innerHTML = `<a href="/dashboard">대시보드</a><a href="/account">내 계정</a>${user.role === 'admin' ? '<a href="/admin#visitors">방문자 IP</a><a href="/admin">관리자</a>' : ''}<button class="logout" id="nav-logout" type="button">로그아웃</button>`;
   $('#nav-logout')?.addEventListener('click', signOut);
 }
 async function signOut() {
@@ -37,7 +37,7 @@ function authPage(mode) {
   const signup = mode === 'signup';
   const selectedProduct = new URLSearchParams(location.search).get('product');
   const productQuery = selectedProduct ? `?product=${encodeURIComponent(selectedProduct)}` : '';
-  $('#page-content').innerHTML = `<div class="auth-shell"><a href="/" class="text-link">← Back to home</a><div class="auth-card"><span class="section-tag">SECURE CUSTOMER ACCESS</span><h1>${signup ? 'Create your account' : 'Welcome back'}</h1><p>${signup ? 'Sign up to submit a test request and track its review.' : 'Sign in to manage your test requests.'}</p><form id="auth-form"><div id="message" hidden role="alert"></div><label class="field"><span>Email</span><input type="email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="254"></label><label class="field"><span>Password</span><input type="password" name="password" placeholder="At least 12 characters" autocomplete="${signup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"></label><button class="gradient-btn wide" type="submit">${signup ? 'Create account' : 'Sign in'}</button></form><div class="form-note">${signup ? `Already have an account? <a href="/sign-in${productQuery}">Sign in</a>` : `New customer? <a href="/sign-up${productQuery}">Create account</a>`}</div></div></div>`;
+  $('#page-content').innerHTML = `<div class="auth-shell"><a href="/" class="text-link">← 홈으로</a><div class="auth-card"><span class="section-tag">ACCOUNT ACCESS</span><h1>${signup ? '계정 만들기' : '다시 오셨네요'}</h1><p>${signup ? '테스트 요청을 시작하고 진행 상황을 확인하세요.' : '이메일과 비밀번호로 로그인하세요.'}</p><form id="auth-form"><div id="message" hidden role="alert"></div><label class="field"><span>이메일</span><input type="email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="254"></label><label class="field"><span>비밀번호</span><input type="password" name="password" placeholder="12자 이상 입력하세요" autocomplete="${signup ? 'new-password' : 'current-password'}" required minlength="12" maxlength="256"></label><button class="gradient-btn wide" type="submit">${signup ? '계정 만들기' : '로그인'}</button></form><div class="form-note">${signup ? `이미 계정이 있나요? <a href="/sign-in${productQuery}">로그인</a>` : `처음 방문하셨나요? <a href="/sign-up${productQuery}">회원가입</a>`}</div></div></div>`;
   $('#auth-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, data = new FormData(form), button = form.querySelector('button');
@@ -52,39 +52,60 @@ function orderMarkup(order, admin = false) {
   const options = ['pending', 'reviewing', 'completed', 'rejected'].map(status => `<option value="${status}"${order.status === status ? ' selected' : ''}>${status[0].toUpperCase() + status.slice(1)}</option>`).join('');
   return `<article class="order"><div class="order-head"><strong>${escapeHtml(order.plan)} <span class="subtext">· ${escapeHtml(order.network)}</span></strong><span class="status">${escapeHtml(order.status)}</span></div>${order.price_cents == null ? '' : `<p>Price at request: ${escapeHtml(formatPrice(order.price_cents))} (simulation)</p>`}<p>Test address: ${escapeHtml(order.address)}</p>${admin ? `<p>Customer: ${escapeHtml(order.email)}</p>` : ''}<p>Reference: ${escapeHtml(order.id)}</p><p>Created: ${escapeHtml(new Date(order.created_at).toLocaleString())}</p>${admin ? `<label class="field"><span>Update review status</span><select class="status-select" data-id="${escapeHtml(order.id)}">${options}</select></label>` : ''}</article>`;
 }
+const statusLabel = value => ({ pending: '접수', reviewing: '검토 중', completed: '완료', rejected: '반려' })[value] || value;
+function planCard(product, href) {
+  return `<article class="plan-card ${product.id === 'free-demo' ? 'featured' : ''}"><span class="section-tag">${product.id === 'free-demo' ? 'FREE DEMO' : 'TEST PACKAGE'}</span><h3>${escapeHtml(product.name)}</h3><div class="plan-price">${escapeHtml(formatPrice(product.price_cents))}<small>시뮬레이션 가격</small></div><p>테스트 요청 및 진행 상태 관리</p><ul><li>4가지 네트워크 주소 형식</li><li>관리자 수동 검토</li><li>대시보드에서 상태 확인</li></ul><a class="${product.id === 'free-demo' ? 'gradient-btn' : 'outline-btn'}" href="${href}">테스트 선택하기 ↗</a></article>`;
+}
 async function dashboard(user) {
   showPage();
   if (!user) { const product = new URLSearchParams(location.search).get('product'); location.replace(product ? `/sign-in?product=${encodeURIComponent(product)}` : '/sign-in'); return; }
-  $('#page-content').innerHTML = `<div class="page-shell"><div class="page-top"><div><span class="section-tag">CUSTOMER DASHBOARD</span><h1>Your test requests</h1><p class="subtext">Submit a simulation and follow its review status.</p></div>${user.role === 'admin' ? '<a class="outline-btn" href="/admin">Open admin panel →</a>' : ''}</div><div class="dashboard-grid"><section class="panel"><h2>New test request</h2><p>Test requests only. No payment, balances, or transactions will be created. The free demo is limited to one per account.</p><p>Questions about a test request? <a class="text-link" href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">Telegram @DarkVault114</a></p><form id="order-form"><div id="message" hidden role="alert"></div><label class="field"><span>Product</span><select name="productId" id="order-product" required disabled><option value="">Loading products…</option></select></label><label class="field"><span>Receiving network</span><select name="network" required><option value="BEP20">BEP20</option><option value="ERC20">ERC20</option><option value="TRC20">TRC20</option><option value="Solana">Solana</option></select></label><label class="field"><span>Test wallet address</span><input name="address" placeholder="e.g. 0x… for BEP20" required minlength="8" maxlength="128"></label><button class="gradient-btn wide" type="submit" disabled>Submit test request</button></form></section><section class="panel"><h2>Recent requests</h2><p>Each submission is reviewed by an administrator.</p><div id="orders" class="order-list"></div></section></div></div>`;
+  $('#page-content').innerHTML = `<div class="page-shell"><div class="workspace-nav"><a href="/dashboard" class="active">대시보드</a><a href="#orders-panel">주문 내역</a><a href="/account">내 계정</a><a href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">지원 ↗</a></div><section class="notice"><span class="notice-icon">◉</span><div><span class="section-tag">ORDER UPDATES</span><strong>주문 진행 상황을 한눈에</strong><p>새로고침을 누르면 관리자의 최신 검토 상태를 확인할 수 있습니다.</p></div></section><section class="welcome panel"><div><span class="section-tag">YOUR WORKSPACE</span><h1>반갑습니다.</h1><p class="subtext">${escapeHtml(user.email)}</p><a href="#new-request" class="gradient-btn">새 테스트 요청 ↗</a></div><span class="welcome-art" aria-hidden="true">◈</span></section><div class="stats-grid" id="dashboard-stats"></div><div class="demo-banner"><div><span class="section-tag">FREE DEMO</span><h3>첫 테스트를 시작해 보세요</h3><p>무료 데모는 계정당 한 번 요청할 수 있습니다.</p></div><a class="outline-btn" href="/dashboard?product=free-demo#new-request">무료 데모 선택 ↗</a></div><section class="panel" id="orders-panel"><div class="section-row"><div><span class="section-tag">ACTIVITY</span><h2>주문 내역</h2></div><button class="logout" id="orders-refresh" type="button">새로고침 ↻</button></div><p id="order-update" role="status" aria-live="polite"></p><div id="orders" class="order-list"></div></section><section class="section" id="plans"><div class="section-heading"><span class="section-tag">TEST PLANS</span><h2>테스트 상품을 선택하세요</h2></div><div id="dashboard-plans" class="catalog-grid"></div></section><section class="panel request-panel" id="new-request"><span class="section-tag">NEW REQUEST</span><h2>테스트 요청하기</h2><p>실제 결제와 코인 전송이 없는 시뮬레이션입니다.</p><form id="order-form"><div id="message" hidden role="alert"></div><label class="field"><span>상품</span><select name="productId" id="order-product" required disabled><option value="">불러오는 중…</option></select></label><label class="field"><span>수신 네트워크</span><select name="network" required><option value="BEP20">BEP20 · BNB Smart Chain</option><option value="ERC20">ERC20 · Ethereum</option><option value="TRC20">TRC20 · Tron</option><option value="Solana">Solana</option></select></label><label class="field"><span>테스트 지갑 주소</span><input name="address" placeholder="선택한 네트워크의 테스트 주소" required minlength="8" maxlength="128"></label><div class="request-summary"><span>요청 가격 · 시뮬레이션</span><strong id="request-price">—</strong></div><button class="gradient-btn wide" type="submit" disabled>테스트 요청 제출 →</button></form><p>테스트 문의: <a class="text-link" href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">@DarkVault114 ↗</a></p></section></div>`;
   async function refresh() {
-    const data = await api('/api/orders');
-    $('#orders').innerHTML = data.orders.length ? data.orders.map(order => orderMarkup(order)).join('') : '<div class="empty">No requests yet. Create your first test request.</div>';
+    const { orders } = await api('/api/orders');
+    const metrics = [['전체 요청', orders.length], ['검토 대기', orders.filter(o => ['pending','reviewing'].includes(o.status)).length], ['완료', orders.filter(o => o.status === 'completed').length], ['총 요청 가격', formatPrice(orders.reduce((sum,o) => sum + (o.price_cents || 0), 0))]];
+    $('#dashboard-stats').innerHTML = metrics.map(([name,value]) => `<article class="stat-card"><span>${name}</span><strong>${escapeHtml(value)}</strong></article>`).join('');
+    $('#orders').innerHTML = orders.length ? orders.map(o => `<details class="order order-detail"><summary><div><span class="subtext">${escapeHtml(o.id.slice(0,8))}</span><strong>${escapeHtml(o.plan)}</strong><small>${escapeHtml(o.network)} · ${escapeHtml(formatPrice(o.price_cents || 0))}</small></div><span class="status ${escapeHtml(o.status)}">${statusLabel(o.status)}</span><span class="text-link">상세 보기 ＋</span></summary><div class="detail-body"><p>요청 번호: ${escapeHtml(o.id)}</p><p>테스트 주소: ${escapeHtml(o.address)}</p><p>접수 시간: ${escapeHtml(new Date(o.created_at).toLocaleString('ko-KR'))}</p><p>마지막 업데이트: ${escapeHtml(new Date(o.updated_at).toLocaleString('ko-KR'))}</p><a class="text-link" href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">이 요청 문의하기 ↗</a></div></details>`).join('') : '<div class="empty">아직 요청 내역이 없습니다. 첫 테스트를 시작해 보세요.</div>';
   }
+  const updatePrice = () => { $('#request-price').textContent = formatPrice(Number($('#order-product').selectedOptions[0]?.dataset.price || 0)); };
   async function loadProducts() {
     const { products } = await api('/api/products');
-    $('#order-product').innerHTML = products.length ? products.map(product => `<option value="${escapeHtml(product.id)}" data-price="${product.price_cents}">${escapeHtml(product.name)} · ${escapeHtml(formatPrice(product.price_cents))}</option>`).join('') : '<option value="">No products available</option>';
-    const selectedProduct = new URLSearchParams(location.search).get('product');
-    if (products.some(product => product.id === selectedProduct)) $('#order-product').value = selectedProduct;
+    $('#order-product').innerHTML = products.length ? products.map(p => `<option value="${escapeHtml(p.id)}" data-price="${p.price_cents}">${escapeHtml(p.name)} · ${escapeHtml(formatPrice(p.price_cents))}</option>`).join('') : '<option value="">선택 가능한 상품이 없습니다</option>';
+    const selected = new URLSearchParams(location.search).get('product');
+    if (products.some(p => p.id === selected)) $('#order-product').value = selected;
     $('#order-product').disabled = !products.length;
     $('#order-form button').disabled = !products.length;
+    $('#dashboard-plans').innerHTML = products.map(p => planCard(p, `/dashboard?product=${encodeURIComponent(p.id)}#new-request`)).join('');
+    updatePrice();
   }
+  $('#order-product').addEventListener('change', updatePrice);
+  $('#orders-refresh').addEventListener('click', async e => {
+    e.currentTarget.disabled = true;
+    try { await refresh(); $('#order-update').textContent = '최신 상태로 업데이트했습니다.'; } catch (error) { $('#order-update').textContent = error.message; }
+    e.currentTarget.disabled = false;
+  });
   $('#order-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, data = new FormData(form), button = form.querySelector('button');
     button.disabled = true;
     try {
       await api('/api/orders', { method: 'POST', body: { productId: data.get('productId'), expectedPriceCents: Number($('#order-product').selectedOptions[0].dataset.price), network: data.get('network'), address: data.get('address') } });
-      form.reset(); await refresh(); message('Test request submitted for review.', true);
+      form.reset(); updatePrice(); await refresh(); message('테스트 요청이 접수되었습니다.', true);
     } catch (error) { message(error.message); try { await loadProducts(); } catch { /* Preserve the original error. */ } }
     button.disabled = $('#order-product').disabled;
   });
-  try { await Promise.all([refresh(), loadProducts()]); } catch (error) { message(error.message); }
+  try { await Promise.all([refresh(), loadProducts()]); if (location.hash) $(location.hash)?.scrollIntoView(); } catch (error) { message(error.message); }
+}
+function accountPage(user) {
+  showPage();
+  if (!user) { location.replace('/sign-in'); return; }
+  $('#page-content').innerHTML = `<div class="page-shell"><a href="/dashboard" class="text-link">← 대시보드</a><div class="page-top"><div><span class="section-tag">ACCOUNT</span><h1>내 계정</h1><p class="subtext">로그인 정보와 계정 권한을 확인하세요.</p></div></div><div class="panel account-grid"><div><span>이메일</span><strong>${escapeHtml(user.email)}</strong></div><div><span>계정 ID</span><strong>${escapeHtml(user.id)}</strong></div><div><span>역할</span><strong>${user.role === 'admin' ? '관리자' : '고객'}</strong></div></div><div class="panel account-help"><h2>계정 문의</h2><p>계정 관련 문의는 텔레그램으로 연락해 주세요.</p><a class="outline-btn" href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">지원 연결 ↗</a></div><button class="logout" id="account-logout" type="button">로그아웃</button></div>`;
+  $('#account-logout').addEventListener('click', signOut);
 }
 async function adminPage(user) {
   showPage();
   if (!user) { location.replace('/sign-in'); return; }
   if (user.role !== 'admin') { $('#page-content').innerHTML = '<div class="auth-shell"><div class="auth-card"><h1>Access denied</h1><p>Administrator access is required.</p><a class="text-link" href="/dashboard">← Back to dashboard</a></div></div>'; return; }
-  $('#page-content').innerHTML = `<div class="page-shell"><div class="page-top"><div><span class="admin-badge">ADMINISTRATOR</span><h1>Request management</h1><p class="subtext">Review and update customer test requests.</p></div><a class="outline-btn" href="/dashboard">Customer dashboard →</a></div><section class="panel"><div id="message" hidden role="alert"></div><h2>All requests</h2><p>Changing status records a review decision. It does not transfer tokens.</p><div class="order-filters"><label class="field"><span>Search requests</span><input id="order-search" type="search" placeholder="Reference, email, or test address" autocomplete="off"></label><label class="field"><span>Status</span><select id="order-status-filter"><option value="">All statuses</option><option value="pending">Pending</option><option value="reviewing">Reviewing</option><option value="completed">Completed</option><option value="rejected">Rejected</option></select></label></div><p id="order-count" role="status" aria-live="polite"></p><div id="orders" class="order-list"></div></section><section class="panel visit-panel"><h2>방문자 IP · Visitor IP addresses</h2><p>최근 30일 방문 기록 중 최대 200개를 표시합니다. Up to 200 visits from the last 30 days.</p><button id="visit-refresh" class="logout" type="button">새로고침 · Refresh</button><div id="visit-list" class="order-list" aria-live="polite"></div></section><section class="panel product-panel"><h2>Products and prices</h2><p>Prices are for simulated requests only; no payment is collected. Existing requests keep their original name and price.</p><div id="product-message" hidden role="alert"></div><form id="new-product" class="product-form"><label class="field"><span>Product name</span><input name="name" required maxlength="80" placeholder="Product name"></label><label class="field"><span>Price (USD)</span><input name="price" required inputmode="decimal" placeholder="0.00"></label><label class="availability"><input name="active" type="checkbox" checked> Available</label><button class="gradient-btn" type="submit">Add product</button></form><div id="products" class="product-list"></div></section></div>`;
+  $('#page-content').innerHTML = `<div class="page-shell"><div class="page-top"><div><span class="admin-badge">ADMINISTRATOR</span><h1>관리자 워크스페이스</h1><p class="subtext">주문과 상품, 방문 기록을 한곳에서 관리하세요.</p></div><a class="outline-btn" href="/dashboard">고객 대시보드 →</a></div><section class="panel"><div id="message" hidden role="alert"></div><h2>주문 관리</h2><p>상태 변경은 테스트 검토 결과를 기록합니다.</p><div class="order-filters"><label class="field"><span>주문 검색</span><input id="order-search" type="search" placeholder="요청 번호, 이메일, 주소" autocomplete="off"></label><label class="field"><span>상태</span><select id="order-status-filter"><option value="">전체 상태</option><option value="pending">접수</option><option value="reviewing">검토 중</option><option value="completed">완료</option><option value="rejected">반려</option></select></label></div><p id="order-count" role="status" aria-live="polite"></p><div id="orders" class="order-list"></div></section><section class="panel visit-panel" id="visitors"><h2>방문자 IP · Visitor IP addresses</h2><p>사이트 방문 시 기록됩니다. 이 화면은 5초마다 자동 갱신됩니다. 최근 30일 중 최대 200개를 표시합니다.</p><button id="visit-refresh" class="logout" type="button">새로고침 · Refresh</button><p id="visit-tracking" role="status"></p><div id="visit-list" class="order-list" aria-live="polite"></div></section><section class="panel product-panel"><h2>상품 · 가격 관리</h2><p>가격은 시뮬레이션용입니다. 수정 전 주문의 상품명과 가격은 유지됩니다.</p><div id="product-message" hidden role="alert"></div><form id="new-product" class="product-form"><label class="field"><span>상품명</span><input name="name" required maxlength="80" placeholder="상품명"></label><label class="field"><span>가격 (USD)</span><input name="price" required inputmode="decimal" placeholder="0.00"></label><label class="availability"><input name="active" type="checkbox" checked> 판매 표시</label><button class="gradient-btn" type="submit">상품 추가</button></form><div id="products" class="product-list"></div></section></div>`;
   let orders = [];
   function renderOrders() {
     const query = $('#order-search').value.trim().toLowerCase();
@@ -119,7 +140,7 @@ async function adminPage(user) {
     const result = await api('/api/admin/products');
     $('#products').innerHTML = result.products.map(product => {
       if (product.id === 'free-demo') return `<article class="product-fixed"><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(formatPrice(product.price_cents))} · Always available</span></article>`;
-      return `<form class="product-form product-edit" data-id="${escapeHtml(product.id)}"><label class="field"><span>Product name</span><input name="name" required maxlength="80" value="${escapeHtml(product.name)}"></label><label class="field"><span>Price (USD)</span><input name="price" required inputmode="decimal" value="${(product.price_cents / 100).toFixed(2)}"></label><label class="availability"><input name="active" type="checkbox"${product.active ? ' checked' : ''}> Available</label><button class="secondary-btn" type="submit">Save changes</button></form>`;
+      return `<form class="product-form product-edit" data-id="${escapeHtml(product.id)}"><label class="field"><span>상품명</span><input name="name" required maxlength="80" value="${escapeHtml(product.name)}"></label><label class="field"><span>가격 (USD)</span><input name="price" required inputmode="decimal" value="${(product.price_cents / 100).toFixed(2)}"></label><label class="availability"><input name="active" type="checkbox"${product.active ? ' checked' : ''}> 판매 표시</label><button class="secondary-btn" type="submit">변경 저장</button></form>`;
     }).join('');
     document.querySelectorAll('.product-edit').forEach(form => form.addEventListener('submit', async event => {
       event.preventDefault();
@@ -135,22 +156,31 @@ async function adminPage(user) {
     catch (error) { productMessage(error.message); }
     button.disabled = false;
   });
+  let visitsLoading = false;
   async function refreshVisits() {
-    const result = await api('/api/admin/visits');
-    $('#visit-list').innerHTML = result.visits.length ? result.visits.map(visit => `<article class="order"><strong>${escapeHtml(visit.ip)}</strong><p>접속 시간 · Visited: ${escapeHtml(new Date(visit.visited_at).toLocaleString())}</p></article>`).join('') : '<div class="empty">방문 기록이 없습니다. No visits yet.</div>';
+    if (visitsLoading) return;
+    visitsLoading = true;
+    try {
+      const result = await api('/api/admin/visits');
+      const tracking = result.tracking;
+      $('#visit-tracking').textContent = tracking ? `내 현재 공개 IP: ${tracking.currentIp || '확인 불가'} · 기록 방식: ${tracking.source} ${tracking.release ? '· 버전 ' + tracking.release : ''} · ${new Date().toLocaleTimeString('ko-KR')}` : '이전 서버 버전입니다. Render에서 최신 배포를 확인해 주세요.';
+      $('#visit-list').innerHTML = result.visits.length ? result.visits.map(visit => `<article class="order"><strong>${escapeHtml(visit.ip)}</strong><p>접속 시간 · ${escapeHtml(new Date(visit.visited_at).toLocaleString('ko-KR'))}</p></article>`).join('') : '<div class="empty">아직 방문 기록이 없습니다.</div>';
+    } finally { visitsLoading = false; }
   }
-  $('#visit-refresh').addEventListener('click', async event => {
-    event.currentTarget.disabled = true;
-    try { await refreshVisits(); } catch (error) { $('#visit-list').textContent = error.message; }
-    event.currentTarget.disabled = false;
-  });
-  try { await Promise.all([refresh(), refreshProducts(), refreshVisits()]); } catch (error) { message(error.message); }
+  async function updateVisits() {
+    try { await refreshVisits(); } catch { $('#visit-tracking').textContent = '방문 기록을 가져오지 못했습니다. 로그인 상태와 연결을 확인하세요.'; }
+  }
+  $('#visit-refresh').addEventListener('click', updateVisits);
+  const timer = setInterval(() => { if (!document.hidden) updateVisits(); }, 5000);
+  window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) updateVisits(); });
+  try { await Promise.all([refresh(), refreshProducts(), refreshVisits()]); if (location.hash === '#visitors') $('#visitors').scrollIntoView(); } catch (error) { message(error.message); }
 }
 async function showCatalog(user) {
   const target = $('#public-products');
   try {
     const { products } = await api('/api/products');
-    target.innerHTML = products.map(product => `<article class="card catalog-card"><span class="card-label">TEST PRODUCT</span><h3>${escapeHtml(product.name)}</h3><strong>${escapeHtml(formatPrice(product.price_cents))}</strong><p>Simulated request only. No payment is collected.</p><a class="outline-btn" href="${user ? '/dashboard' : '/sign-up'}?product=${encodeURIComponent(product.id)}">Select product →</a></article>`).join('');
+    target.innerHTML = products.map(product => planCard(product, `${user ? '/dashboard' : '/sign-up'}?product=${encodeURIComponent(product.id)}${user ? '#new-request' : ''}`)).join('');
   } catch { target.textContent = 'Products are temporarily unavailable.'; }
 }
 const toggle = $('.menu-toggle');
@@ -163,4 +193,5 @@ try {
   else if (location.pathname === '/sign-up') authPage('signup');
   else if (location.pathname === '/dashboard') await dashboard(user);
   else if (location.pathname === '/admin') await adminPage(user);
+  else if (location.pathname === '/account') accountPage(user);
 } catch { showPage(); $('#page-content').innerHTML = '<div class="auth-shell"><div class="auth-card"><h1>Unable to connect</h1><p>Please try again later.</p></div></div>'; }

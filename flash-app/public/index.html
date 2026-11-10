@@ -1,56 +1,46 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A workspace for blockchain transaction simulations and testing.">
-  <title>Flash Lab — Blockchain Testing</title>
+  <meta name="theme-color" content="#0b1016">
+  <meta name="description" content="Flash Lab — 블록체인 테스트 요청과 주문을 한곳에서 관리하세요.">
+  <title>Flash Lab · 테스트 워크스페이스</title>
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <header class="topbar"><div class="nav-wrap">
-    <a class="brand" href="/">Flash <span>Lab</span></a>
-    <nav class="navigation" aria-label="Main navigation">
-      <a href="/#how-it-works">How It Works</a><a href="/#pricing">Pricing</a><a href="/#contact">Contact</a>
-      <span id="auth-nav"><a href="/sign-in">↪ &nbsp;Sign in</a><a href="/sign-up" class="outline-btn">♙ &nbsp;Sign up</a><a href="/sign-up" class="gradient-btn small">ϟ &nbsp;Get Started</a></span>
+    <a class="brand" href="/" aria-label="Flash Lab 홈"><span class="brand-mark">ϟ</span> Flash <span>Lab</span></a>
+    <nav class="navigation" aria-label="주 메뉴">
+      <a href="/#how-it-works">이용 방법</a><a href="/#pricing">상품 안내</a><a href="/#contact">문의</a>
+      <span id="auth-nav"><a href="/sign-in">로그인</a><a href="/sign-up" class="gradient-btn small">시작하기 ↗</a></span>
     </nav>
-    <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <button class="menu-toggle" type="button" aria-label="메뉴 열기" aria-expanded="false">☰</button>
   </div></header>
   <main id="app">
     <div id="home-page">
       <section class="hero container">
-        <div class="eyebrow"><span class="dot"></span> BLOCKCHAIN TESTING &amp; DEVELOPMENT SERVICE</div>
-        <h1>Blockchain Testing &amp;<br> Development Service</h1>
-        <p class="hero-lead">A workspace for developers, researchers, and Web3 teams testing token-transfer workflows.</p>
-        <p class="hero-sub">Explore supported networks, submit test requests, and track their review in one place.</p>
-        <div class="features-box"><span class="warning-icon">⚠</span><div><h3>Key Features</h3><div class="feature-list"><span>Multi-network blockchain testing</span><span>Simulation request tracking</span><span>Developer-focused testing tools</span><span>Transaction request monitoring</span><span>Testing resources for Web3 applications</span><span>Support for development workflows</span></div></div></div>
-        <div class="intent"><span class="check">✓</span><div><strong>Built for Controlled Development Environments</strong><small>Intended for testing, development, and educational purposes.</small></div></div>
-        <div class="hero-actions"><a class="gradient-btn" href="/sign-up">ϟ &nbsp;Start a test</a><a class="secondary-btn" href="#contact">✉ &nbsp;Contact Support</a></div>
-        <div class="quick-stats"><div><b>Web3</b><span>Teams</span></div><div><b>Multi</b><span>Network</span></div><div><b>Test</b><span>Monitor</span></div><div><b>Dev</b><span>Focused</span></div></div>
-        <p class="disclaimer">This independent demo does not issue Tether USD₮ or real cryptocurrency. No balances or transactions are created, and no payment is collected.</p>
+        <div class="eyebrow"><span class="dot"></span> BLOCKCHAIN TESTING WORKSPACE</div>
+        <h1>테스트의 시작부터<br><span>진행 확인까지.</span></h1>
+        <p class="hero-lead">블록체인 테스트 요청을 더 간단하게.<br>네트워크를 선택하고, 요청하고, 진행 상황을 확인하세요.</p>
+        <div class="hero-actions"><a class="gradient-btn" href="/dashboard">대시보드 시작하기 ↗</a><a class="secondary-btn" href="#pricing">상품 둘러보기</a></div>
+        <div class="network-strip"><span>BEP20</span><span>ERC20</span><span>TRC20</span><span>SOLANA</span></div>
+        <p class="disclaimer">독립적인 시뮬레이션 서비스입니다. 실제 코인 발행·전송 및 결제는 이루어지지 않습니다.</p>
       </section>
-      <section class="container overview-grid" aria-label="Before you begin">
-        <article><span class="mini-icon">↗</span><h2>Understand the workflow</h2><p>Choose a test network, provide a test address, and follow your request through review.</p></article>
-        <article><span class="mini-icon">◈</span><h2>Check network compatibility</h2><p>Make sure the address format matches your selected network before submitting a request.</p></article>
-        <article><span class="mini-icon">✓</span><h2>Review the details first</h2><p>All requests in this demo are for testing and do not send or receive real assets.</p></article>
+      <section class="container" id="pricing">
+        <div class="section-heading"><span class="section-tag">TEST PLANS</span><h2>필요한 테스트를 선택하세요</h2><p>관리자가 등록한 상품과 가격을 확인하고 테스트 요청을 시작하세요.</p></div>
+        <div id="public-products" class="catalog-grid" aria-live="polite"><p class="subtext">상품을 불러오는 중입니다…</p></div>
       </section>
-      <section class="container" id="pricing"><div class="demo-banner"><div><span class="section-tag">FREE DEMO PLAN</span><h2>Need a test order?</h2><p>Create an account and submit a simulated 100-unit test request once per account.</p><p>Test request inquiries: <a class="text-link" href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">Telegram @DarkVault114</a></p></div><a href="/sign-up" class="gradient-btn">Claim free test units &nbsp;→</a></div><div id="public-products" class="card-grid catalog-grid" aria-live="polite"></div></section>
-      <section class="section container"><div class="section-heading"><span class="section-tag">WHY CHOOSE US</span><h2>What to review before using the service</h2><p>Everything you need for a clear and controlled test workflow.</p></div><div class="card-grid">
-        <article class="card"><div class="card-icon">✓</div><span class="card-label">MANUAL REVIEW</span><h3>Clear Review Process</h3><p>Submit your receiving network and test address so your request can be reviewed.</p></article>
-        <article class="card"><div class="card-icon">◇</div><span class="card-label">4 NETWORKS</span><h3>Network Guidance</h3><p>Select from supported network formats and check compatibility before continuing.</p></article>
-        <article class="card"><div class="card-icon">⌘</div><span class="card-label">DEVELOPER USE</span><h3>Testing Focus</h3><p>Designed for development, demonstrations, and educational workflows.</p></article>
-        <article class="card"><div class="card-icon">◷</div><span class="card-label">READ FIRST</span><h3>Transparent Limits</h3><p>Review the simulation details before placing a request. No real assets are transferred.</p></article>
+      <section class="container section" id="how-it-works"><div class="section-heading"><span class="section-tag">HOW IT WORKS</span><h2>세 단계로 간편하게</h2></div><div class="steps-grid">
+        <article class="panel"><span class="step-number">01</span><h3>상품 선택</h3><p>상품과 테스트 네트워크를 선택하세요.</p></article>
+        <article class="panel"><span class="step-number">02</span><h3>테스트 요청</h3><p>네트워크에 맞는 테스트 주소를 입력하세요.</p></article>
+        <article class="panel"><span class="step-number">03</span><h3>진행 확인</h3><p>대시보드에서 검토 상태를 확인하세요.</p></article>
       </div></section>
-      <section class="section container" id="how-it-works"><div class="section-heading"><span class="section-tag">PROCESS</span><h2>How the service works</h2><p>Review the service, submit details, and monitor your request</p></div><div class="steps-grid">
-        <article><span class="step-number">01</span><h3>Select Your Plan</h3><p>Choose the free demo and review the testing scope.</p></article><article><span class="step-number">02</span><h3>Choose a Network</h3><p>Select a supported network for your simulation.</p></article><article><span class="step-number">03</span><h3>Submit Details</h3><p>Provide a test wallet address for review.</p></article><article><span class="step-number">04</span><h3>Track Your Request</h3><p>Review updates from your account dashboard.</p></article>
-      </div></section>
-      <section class="container" id="contact"><div class="contact-banner"><span class="section-tag">WE'RE HERE TO HELP</span><h2>Ready to start testing?</h2><p>For questions about test requests, reach us on Telegram.</p><a href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer" class="gradient-btn">Telegram @DarkVault114 &nbsp;→</a></div></section>
-      <footer class="container footer"><div><a class="brand" href="/">Flash <span>Lab</span></a><p>Blockchain testing resources for controlled Web3 workflows.</p></div><div><h4>PLATFORM</h4><a href="/">Home</a><a href="/#pricing">Pricing</a><a href="/#how-it-works">How It Works</a></div><div><h4>ACCOUNT</h4><a href="/sign-in">Sign in</a><a href="/sign-up">Sign up</a><a href="/dashboard">Dashboard</a></div><div><h4>ABOUT</h4><p>Independent demo.<br> No live token transfers.</p></div></footer>
-      <div class="container copyright">© 2026 Flash Lab. All rights reserved. <span>Built for testing and development.</span></div>
+      <section class="container section" id="contact"><div class="contact-banner"><span class="section-tag">SUPPORT</span><h2>도움이 필요하신가요?</h2><p>테스트 요청과 상품 문의는 텔레그램으로 연결됩니다.</p><a href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer" class="gradient-btn">Telegram @DarkVault114 ↗</a></div></section>
     </div>
     <div id="page-content" hidden></div>
   </main>
-  <p class="container privacy-notice">The site records visitors’ IP addresses and visit times for administration. Records older than 30 days are removed when the site is active.</p>
+  <footer class="container site-footer"><a class="brand" href="/">Flash <span>Lab</span></a><p>테스트를 위한 더 간결한 워크스페이스.</p><div><a href="/dashboard">대시보드</a><a href="/account">내 계정</a><a href="https://t.me/DarkVault114" target="_blank" rel="noopener noreferrer">지원</a></div><p class="privacy-notice">방문자의 공개 IP와 접속 시간을 관리자에게 표시하며, 기록은 30일간 보관됩니다. VPN·통신사에 따라 보이는 공개 IP는 달라질 수 있습니다.</p><small>© 2026 Flash Lab · Simulation workspace</small></footer>
 </body>
 </html>

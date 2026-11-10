@@ -78,13 +78,18 @@ async function cleanVisits(force = false) {
   await deleteOldVisits.run(visitCutoff());
   lastVisitCleanup = Date.now();
 }
+function visitorSource() {
+  // Render can deploy code before a Blueprint environment update is applied.
+  if (process.env.FLASH_TRUST_PROXY === 'cloudflare' || (process.env.RENDER === 'true' && process.env.FLASH_TRUST_PROXY === '1')) return 'cloudflare';
+  return process.env.FLASH_TRUST_PROXY === '1' ? 'forwarded' : 'socket';
+}
 function visitorAddress(req) {
   let address;
-  if (process.env.FLASH_TRUST_PROXY === 'cloudflare') {
+  if (visitorSource() === 'cloudflare') {
     address = req.headers['cf-connecting-ip'];
     if (typeof address !== 'string') return null;
     address = address.trim();
-  } else if (process.env.FLASH_TRUST_PROXY === '1') {
+  } else if (visitorSource() === 'forwarded') {
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded !== 'string') return null;
     address = forwarded.split(',').at(-1).trim();
@@ -185,7 +190,7 @@ async function api(req, res, path) {
   if (path === '/api/admin/visits' && req.method === 'GET') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
     await cleanVisits(true);
-    return json(res, 200, { visits: await recentVisits.all(visitCutoff()) });
+    return json(res, 200, { visits: await recentVisits.all(visitCutoff()), tracking: { source: visitorSource(), currentIp: visitorAddress(req), release: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) } });
   }
   if (path === '/api/admin/orders' && req.method === 'GET') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
@@ -212,7 +217,7 @@ const server = createServer(async (req, res) => {
   try {
     if (path.startsWith('/api/')) return await api(req, res, path);
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed.' });
-    const file = files[path] || (['/sign-in', '/sign-up', '/dashboard', '/admin'].includes(path) ? files['/'] : null);
+    const file = files[path] || (['/sign-in', '/sign-up', '/dashboard', '/account', '/admin'].includes(path) ? files['/'] : null);
     if (!file) return json(res, 404, { error: 'Not found.' });
     if (file === files['/']) {
       try { await recordVisit(req); } catch { console.error('Visit recording failed.'); }
