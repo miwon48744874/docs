@@ -21,13 +21,22 @@
   <main id="app">
     <div id="home-page">
       <section class="hero container">
-        <div class="eyebrow"><span class="dot"></span> 블록체인 테스트 작업 공간</div>
-        <h1>테스트의 시작부터<br><span>진행 확인까지.</span></h1>
-        <p class="hero-lead">블록체인 테스트 요청을 더 간단하게.<br>네트워크를 선택하고, 요청하고, 진행 상황을 확인하세요.</p>
-        <div class="hero-actions"><a class="gradient-btn" href="/dashboard">대시보드 시작하기 ↗</a><a class="secondary-btn" href="#pricing">상품 둘러보기</a></div>
-        <div class="network-strip"><span>BEP20</span><span>ERC20</span><span>TRC20</span><span>SOLANA</span></div>
-        <p class="disclaimer">독립적인 시뮬레이션 서비스입니다. 실제 코인 발행·전송 및 결제는 이루어지지 않습니다.</p>
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="dot"></span> 블록체인 테스트 작업 공간</div>
+          <h1>테스트의 시작부터<br><span>진행 확인까지.</span></h1>
+          <p class="hero-lead">블록체인 테스트 요청을 더 간단하게.<br>네트워크를 선택하고 진행 상황을 한눈에 확인하세요.</p>
+          <div class="hero-actions"><a class="gradient-btn" href="/dashboard">대시보드 시작하기 <span aria-hidden="true">↗</span></a><a class="secondary-btn" href="#pricing">상품 둘러보기 <span aria-hidden="true">→</span></a></div>
+          <p class="disclaimer">독립적인 시뮬레이션 서비스입니다. 실제 코인 발행·전송 및 결제는 이루어지지 않습니다.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="visual-core"><span class="visual-symbol">ϟ</span><span class="visual-name">플래시 랩</span><span class="visual-caption">테스트 작업 공간</span></div>
+          <span class="orbit-dot dot-one"></span><span class="orbit-dot dot-two"></span><span class="orbit-dot dot-three"></span>
+          <div class="visual-label visual-label-top"><span class="visual-label-icon">◇</span><span>테스트 요청<small>네트워크 선택</small></span></div>
+          <div class="visual-label visual-label-bottom"><span class="visual-label-icon">✓</span><span>진행 상황<small>대시보드에서 확인</small></span></div>
+        </div>
       </section>
+      <div class="network-band container"><span class="network-title">테스트 네트워크</span><div class="network-strip"><span>BEP20</span><span>ERC20</span><span>TRC20</span><span>SOLANA</span></div></div>
       <section class="container" id="pricing">
         <div class="section-heading"><span class="section-tag">테스트 상품</span><h2>필요한 테스트를 선택하세요</h2><p>관리자가 등록한 상품과 가격을 확인하고 테스트 요청을 시작하세요.</p></div>
         <div id="public-products" class="catalog-grid" aria-live="polite"><p class="subtext">상품을 불러오는 중입니다…</p></div>
