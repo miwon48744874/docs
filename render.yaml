@@ -16,7 +16,7 @@ services:
       - key: FLASH_SECURE_COOKIE
         value: "1"
       - key: FLASH_TRUST_PROXY
-        value: "1"
+        value: cloudflare
       - key: DATABASE_URL
         sync: false
       - key: FLASH_ADMIN_EMAIL

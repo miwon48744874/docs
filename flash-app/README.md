@@ -59,7 +59,13 @@ Browser document navigations are recorded using `Sec-Fetch-Dest: document` or, f
 
 <!-- /coderabbit-ai-generated:v1 --> Records older than 30 days are removed when the application is active or the list is refreshed. A visitor notice is shown on the site.
 
-Without `FLASH_TRUST_PROXY`, the server uses the socket address and ignores forwarded headers. When `FLASH_TRUST_PROXY=1`, it uses the final `X-Forwarded-For` entry and skips recording if it is missing or invalid. Enable this only behind a trusted proxy that appends the actual client address; verify that behavior for the deployed host. The Render configuration enables this option, but actual Render visitor-IP behavior still needs verification after deployment. VPNs and proxies can mask a visitor’s own address.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:c810f25104fe58d4e31638022ca73cbd9e770fee1f338620666bb0d61cee7995 -->
+
+Without `FLASH_TRUST_PROXY`, the server uses the socket address and ignores forwarded headers. With `FLASH_TRUST_PROXY=1`, it uses the final `X-Forwarded-For` entry; enable this only behind a trusted proxy that appends the client address. With `FLASH_TRUST_PROXY=cloudflare`, used by the Render configuration, it uses `CF-Connecting-IP` supplied by Cloudflare and skips recording if that header is missing or invalid. Enable this mode only when requests cannot bypass a trusted Cloudflare proxy; otherwise clients can forge the header. Verify the deployed host’s proxy behavior. Existing visit records are not rewritten, and VPNs or other proxies can mask a visitor’s own address.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Verify
 

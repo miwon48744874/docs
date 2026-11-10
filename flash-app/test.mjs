@@ -107,6 +107,48 @@ for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and ad
   assert.equal((await call('/api/admin/orders', { cookie: admin.cookie })).status, 401);
 });
 
+for (const backend of ['sqlite', 'postgres']) test(`Cloudflare visitor IP uses the edge address and ignores other forwarded headers (${backend})`, { skip: backend === 'postgres' && !process.env.FLASH_TEST_DATABASE_URL }, async t => {
+  const data = mkdtempSync(join(tmpdir(), 'flash-cloudflare-'));
+  const password = randomBytes(16).toString('hex');
+  let pool, schema, databaseUrl = '';
+  if (backend === 'postgres') {
+    schema = `flash_test_${randomBytes(6).toString('hex')}`;
+    pool = new pg.Pool({ connectionString: process.env.FLASH_TEST_DATABASE_URL });
+    await pool.query(`CREATE SCHEMA "${schema}"`);
+    const url = new URL(process.env.FLASH_TEST_DATABASE_URL);
+    url.searchParams.set('options', `-c search_path=${schema}`);
+    databaseUrl = url.toString();
+  }
+  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], {
+    env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: '0', FLASH_TRUST_PROXY: 'cloudflare', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(async () => {
+    if (child.exitCode === null) { const stopped = new Promise(resolve => child.once('exit', resolve)); child.kill(); await stopped; }
+    if (pool) { await pool.query(`DROP SCHEMA "${schema}" CASCADE`); await pool.end(); }
+    rmSync(data, { recursive: true, force: true });
+  });
+  const port = await new Promise((resolve, reject) => {
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; const match = output.match(/listening on (\d+)/); if (match) resolve(Number(match[1])); });
+    child.once('exit', code => reject(new Error(`Server exited before startup: ${code}`)));
+    child.once('error', reject);
+  });
+  const base = `http://127.0.0.1:${port}`;
+  const forwarded = { 'sec-fetch-dest': 'document', 'x-forwarded-for': '203.0.113.10, 10.0.0.1' };
+  for (const ip of ['198.51.100.23', '2001:db8::23', '::ffff:198.51.100.24', 'invalid', 'fe80::1%eth0', '198.51.100.25, 198.51.100.26']) {
+    assert.equal((await fetch(base + '/', { headers: { ...forwarded, 'cf-connecting-ip': ip } })).status, 200);
+  }
+  assert.equal((await fetch(base + '/', { headers: forwarded })).status, 200);
+  const login = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json', 'x-requested-with': 'flash-app' }, body: JSON.stringify({ email: 'admin@example.test', password }) });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const response = await fetch(base + '/api/admin/visits', { headers: { cookie } });
+  assert.equal(response.status, 200);
+  const { visits } = await response.json();
+  assert.deepEqual(visits.map(visit => visit.ip).sort(), ['198.51.100.23', '198.51.100.24', '2001:db8::23'].sort());
+});
+
 
 test('legacy free-demo orders migrate without losing their limit', async t => {
   const data = mkdtempSync(join(tmpdir(), 'flash-migration-'));

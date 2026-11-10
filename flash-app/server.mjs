@@ -80,7 +80,11 @@ async function cleanVisits(force = false) {
 }
 function visitorAddress(req) {
   let address;
-  if (process.env.FLASH_TRUST_PROXY === '1') {
+  if (process.env.FLASH_TRUST_PROXY === 'cloudflare') {
+    address = req.headers['cf-connecting-ip'];
+    if (typeof address !== 'string') return null;
+    address = address.trim();
+  } else if (process.env.FLASH_TRUST_PROXY === '1') {
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded !== 'string') return null;
     address = forwarded.split(',').at(-1).trim();
