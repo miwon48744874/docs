@@ -1,31 +1,13 @@
 import { createServer } from 'node:http';
-import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { openDatabase, isUniqueViolation } from './database.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 const root = import.meta.dirname;
 const dataDir = process.env.FLASH_DATA_DIR || join(root, 'data');
-mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-const db = new DatabaseSync(join(dataDir, 'app.sqlite'));
-db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
-  CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'customer', created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at INTEGER NOT NULL);
-  CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, price_cents INTEGER NOT NULL CHECK(price_cents >= 0), active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), plan TEXT NOT NULL, network TEXT NOT NULL, address TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-  CREATE UNIQUE INDEX IF NOT EXISTS one_demo_per_user ON orders(user_id) WHERE plan = 'Free demo';
-`);
 const now = () => new Date().toISOString();
-// Add catalog snapshots without changing existing order records or the free-demo limit.
-const orderColumns = db.prepare('PRAGMA table_info(orders)').all().map(column => column.name);
-db.exec('BEGIN');
-try {
-  if (!orderColumns.includes('product_id')) db.exec('ALTER TABLE orders ADD COLUMN product_id TEXT REFERENCES products(id)');
-  if (!orderColumns.includes('price_cents')) db.exec('ALTER TABLE orders ADD COLUMN price_cents INTEGER');
-  db.prepare('INSERT OR IGNORE INTO products (id, name, price_cents, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('free-demo', 'Free demo', 0, 1, now(), now());
-  db.prepare("UPDATE orders SET product_id = 'free-demo', price_cents = 0 WHERE plan = 'Free demo' AND product_id IS NULL").run();
-  db.exec('COMMIT');
-} catch (error) { db.exec('ROLLBACK'); throw error; }
+const db = await openDatabase({ url: process.env.DATABASE_URL, dataDir, requirePostgres: process.env.FLASH_REQUIRE_POSTGRES === '1' });
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 function passwordHash(password) {
@@ -45,8 +27,8 @@ const adminPassword = process.env.FLASH_ADMIN_PASSWORD;
 if (adminEmail || adminPassword) {
   if (!adminEmail || !emailValid(adminEmail) || !adminPassword || adminPassword.length < 12) throw new Error('Provide FLASH_ADMIN_EMAIL and a FLASH_ADMIN_PASSWORD of at least 12 characters.');
   const email = normalizeEmail(adminEmail);
-  const existing = db.prepare('SELECT id, role FROM users WHERE email = ?').get(email);
-  if (!existing) db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(randomUUID(), email, passwordHash(adminPassword), 'admin', now());
+  const existing = await db.prepare('SELECT id, role FROM users WHERE email = ?').get(email);
+  if (!existing) await db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(randomUUID(), email, passwordHash(adminPassword), 'admin', now());
   else if (existing.role !== 'admin') throw new Error('Admin email already belongs to a customer. Use a separate address.');
 }
 const secureCookie = process.env.FLASH_SECURE_COOKIE === '1';
@@ -56,16 +38,16 @@ function json(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(body));
 }
-function currentUser(req) {
+async function currentUser(req) {
   const cookie = (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('session='));
   const token = cookie?.slice('session='.length);
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   return db.prepare('SELECT users.id, users.email, users.role FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.token_hash = ? AND sessions.expires_at > ?').get(hash(token), Date.now());
 }
-function sessionCookie(res, user) {
+async function sessionCookie(res, user) {
   const token = randomBytes(32).toString('hex');
-  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
-  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(hash(token), user.id, Date.now() + 7 * 86400_000);
+  await db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
+  await db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(hash(token), user.id, Date.now() + 7 * 86400_000);
   res.setHeader('Set-Cookie', `session=${token}; ${cookieOptions}; Max-Age=604800`);
 }
 async function bodyJson(req) {
@@ -94,32 +76,33 @@ async function api(req, res, path) {
       if (originHost !== req.headers.host) return json(res, 403, { error: 'Invalid origin.' });
     }
   }
-  if (path === '/api/products' && req.method === 'GET') return json(res, 200, { products: db.prepare('SELECT id, name, price_cents FROM products WHERE active = 1 ORDER BY created_at, id').all() });
-  if (path === '/api/session' && req.method === 'GET') return json(res, 200, { user: currentUser(req) });
+  if (path === '/api/products' && req.method === 'GET') return json(res, 200, { products: await db.prepare('SELECT id, name, price_cents FROM products WHERE active = 1 ORDER BY created_at, id').all() });
+  if (path === '/api/session' && req.method === 'GET') return json(res, 200, { user: await currentUser(req) });
   if ((path === '/api/signup' || path === '/api/login') && req.method === 'POST') {
     if (!allowAttempt(req)) return json(res, 429, { error: 'Too many attempts. Try again later.' });
     const body = await bodyJson(req);
     if (!emailValid(body.email) || typeof body.password !== 'string' || body.password.length < 12 || body.password.length > 256) return json(res, 400, { error: 'Use a valid email and a password of 12 to 256 characters.' });
     const email = normalizeEmail(body.email);
-    let user = db.prepare('SELECT id, email, role, password FROM users WHERE email = ?').get(email);
+    let user = await db.prepare('SELECT id, email, role, password FROM users WHERE email = ?').get(email);
     if (path === '/api/signup') {
       if (user) return json(res, 409, { error: 'Unable to create account with this email.' });
       user = { id: randomUUID(), email, role: 'customer' };
-      db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(user.id, email, passwordHash(body.password), 'customer', now());
+      try { await db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(user.id, email, passwordHash(body.password), 'customer', now()); }
+      catch (error) { if (isUniqueViolation(error)) return json(res, 409, { error: 'Unable to create account with this email.' }); throw error; }
     } else if (!user || !passwordMatches(body.password, user.password)) {
       return json(res, 401, { error: 'Invalid email or password.' });
     }
-    sessionCookie(res, user);
+    await sessionCookie(res, user);
     return json(res, 200, { user: { id: user.id, email: user.email, role: user.role } });
   }
   if (path === '/api/logout' && req.method === 'POST') {
     const token = (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('session='))?.slice(8);
-    if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hash(token));
+    if (token) await db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hash(token));
     return json(res, 200, { ok: true }, { 'Set-Cookie': `session=; ${cookieOptions}; Max-Age=0` });
   }
-  const user = currentUser(req);
+  const user = await currentUser(req);
   if (!user) return json(res, 401, { error: 'Please sign in.' });
-  if (path === '/api/orders' && req.method === 'GET') return json(res, 200, { orders: ordersForUser.all(user.id) });
+  if (path === '/api/orders' && req.method === 'GET') return json(res, 200, { orders: await ordersForUser.all(user.id) });
   if (path === '/api/orders' && req.method === 'POST') {
     const body = await bodyJson(req);
     const address = typeof body.address === 'string' ? body.address.trim() : '';
@@ -128,17 +111,23 @@ async function api(req, res, path) {
     // Preserve the original free-demo request format for existing clients.
     const productId = body.productId === undefined && body.plan === 'Free demo' ? 'free-demo' : body.productId;
     if (typeof productId !== 'string') return json(res, 400, { error: 'Choose an available product.' });
-    const product = db.prepare('SELECT id, name, price_cents FROM products WHERE id = ? AND active = 1').get(productId);
+    const product = await db.prepare('SELECT id, name, price_cents FROM products WHERE id = ? AND active = 1').get(productId);
     if (!product) return json(res, 400, { error: 'Choose an available product.' });
     if (body.expectedPriceCents !== undefined && body.expectedPriceCents !== product.price_cents) return json(res, 409, { error: 'The product price changed. Please review the latest price.' });
-    if (product.id === 'free-demo' && db.prepare("SELECT id FROM orders WHERE user_id = ? AND plan = 'Free demo'").get(user.id)) return json(res, 409, { error: 'The free demo is limited to one request per account.' });
+    if (product.id === 'free-demo' && await db.prepare("SELECT id FROM orders WHERE user_id = ? AND plan = 'Free demo'").get(user.id)) return json(res, 409, { error: 'The free demo is limited to one request per account.' });
     const id = randomUUID(); const timestamp = now();
-    db.prepare('INSERT INTO orders (id, user_id, plan, network, address, status, created_at, updated_at, product_id, price_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, user.id, product.name, body.network, address, 'pending', timestamp, timestamp, product.id, product.price_cents);
+    try {
+      const inserted = await db.prepare("INSERT INTO orders (id, user_id, plan, network, address, status, created_at, updated_at, product_id, price_cents) SELECT ?, ?, name, ?, ?, 'pending', ?, ?, id, price_cents FROM products WHERE id = ? AND active = 1 AND price_cents = ?").run(id, user.id, body.network, address, timestamp, timestamp, product.id, product.price_cents);
+      if (!inserted.changes) return json(res, 409, { error: 'The product changed. Please review the latest selection.' });
+    } catch (error) {
+      if (product.id === 'free-demo' && isUniqueViolation(error)) return json(res, 409, { error: 'The free demo is limited to one request per account.' });
+      throw error;
+    }
     return json(res, 201, { id });
   }
   if (path === '/api/admin/products' && req.method === 'GET') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
-    return json(res, 200, { products: db.prepare('SELECT id, name, price_cents, active FROM products ORDER BY created_at, id').all() });
+    return json(res, 200, { products: await db.prepare('SELECT id, name, price_cents, active FROM products ORDER BY created_at, id').all() });
   }
   const productMatch = path.match(/^\/api\/admin\/products\/([0-9a-f-]+|free-demo)$/);
   if ((path === '/api/admin/products' && req.method === 'POST') || (productMatch && req.method === 'PATCH')) {
@@ -147,26 +136,28 @@ async function api(req, res, path) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name || name.length > 80 || /[\u0000-\u001f\u007f]/.test(name) || !Number.isSafeInteger(body.priceCents) || body.priceCents < 0 || body.priceCents > 100_000_000 || typeof body.active !== 'boolean') return json(res, 400, { error: 'Enter a product name, a valid price, and availability.' });
     const productId = productMatch ? productMatch[1] : randomUUID();
-    const existing = db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+    const existing = await db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
     if (productMatch && !existing) return json(res, 404, { error: 'Product not found.' });
     if (productId === 'free-demo' && (name !== 'Free demo' || body.priceCents !== 0 || !body.active)) return json(res, 400, { error: 'The free demo must remain available and free.' });
-    const duplicate = db.prepare('SELECT id FROM products WHERE name = ? COLLATE NOCASE AND id != ?').get(name, productId);
+    const duplicate = await db.prepare(db.productLookup).get(name, productId);
     if (duplicate) return json(res, 409, { error: 'A product with this name already exists.' });
     const timestamp = now();
-    if (productMatch) db.prepare('UPDATE products SET name = ?, price_cents = ?, active = ?, updated_at = ? WHERE id = ?').run(name, body.priceCents, Number(body.active), timestamp, productId);
-    else db.prepare('INSERT INTO products VALUES (?, ?, ?, ?, ?, ?)').run(productId, name, body.priceCents, Number(body.active), timestamp, timestamp);
+    try {
+      if (productMatch) await db.prepare('UPDATE products SET name = ?, price_cents = ?, active = ?, updated_at = ? WHERE id = ?').run(name, body.priceCents, Number(body.active), timestamp, productId);
+      else await db.prepare('INSERT INTO products VALUES (?, ?, ?, ?, ?, ?)').run(productId, name, body.priceCents, Number(body.active), timestamp, timestamp);
+    } catch (error) { if (isUniqueViolation(error)) return json(res, 409, { error: 'A product with this name already exists.' }); throw error; }
     return json(res, productMatch ? 200 : 201, { id: productId });
   }
   if (path === '/api/admin/orders' && req.method === 'GET') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
-    return json(res, 200, { orders: allOrders.all() });
+    return json(res, 200, { orders: await allOrders.all() });
   }
   const match = path.match(/^\/api\/admin\/orders\/([0-9a-f-]+)$/);
   if (match && req.method === 'PATCH') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
     const body = await bodyJson(req);
     if (!['pending', 'reviewing', 'completed', 'rejected'].includes(body.status)) return json(res, 400, { error: 'Invalid status.' });
-    const result = db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?').run(body.status, now(), match[1]);
+    const result = await db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?').run(body.status, now(), match[1]);
     if (!result.changes) return json(res, 404, { error: 'Order not found.' });
     return json(res, 200, { ok: true });
   }

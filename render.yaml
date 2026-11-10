@@ -2,7 +2,7 @@ services:
   - type: web
     name: flash-lab-demo-0353caa7
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     branch: coderabbit/run-selected-skill/0353caa7
     rootDir: flash-app
     buildCommand: npm ci --ignore-scripts --no-audit --no-fund
@@ -11,15 +11,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 24.21.0
-      - key: FLASH_DATA_DIR
-        value: /var/data
+      - key: FLASH_REQUIRE_POSTGRES
+        value: "1"
       - key: FLASH_SECURE_COOKIE
         value: "1"
+      - key: DATABASE_URL
+        sync: false
       - key: FLASH_ADMIN_EMAIL
         sync: false
       - key: FLASH_ADMIN_PASSWORD
         sync: false
-    disk:
-      name: flash-lab-data
-      mountPath: /var/data
-      sizeGB: 1

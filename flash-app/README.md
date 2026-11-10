@@ -31,11 +31,19 @@ The application stores accounts, sessions, and requests in `flash-app/data/app.s
 
 ## Render deployment preparation
 
-The root `render.yaml` describes a paid Render web service with a 1 GB persistent disk. It builds the `flash-app/` directory using Node 24, enables secure cookies, and stores SQLite data on the disk. A paid service and disk incur charges; verify the current price in Render before creating the service.
+<!-- coderabbit-ai-generated:v1 -->
 
-During initial Blueprint creation, enter a new administrator email and a new password of at least 12 characters directly into Render for `FLASH_ADMIN_EMAIL` and `FLASH_ADMIN_PASSWORD`. Do not reuse the sandbox preview credential. Render creates a fresh database; local preview accounts and orders do not move automatically.
+<!-- coderabbit-ai-generated-section:v1:ed28092407d38167e868ee4d538972b28f9aecd6ad463e172e1241675a3dc54d -->
+
+The root `render.yaml` configures a free Render web service and requires a separately created Neon PostgreSQL database. The free server can sleep and take time to wake; Neon may suspend access if its free usage limits are reached. Check each provider's current free plan limits before deploying. Render's local filesystem is temporary, so the service refuses to start when its required `DATABASE_URL` is absent.
+
+Create a Neon project on its free plan and enter its TLS-enabled PostgreSQL connection string directly in Render as `DATABASE_URL`; never paste it into chat or commit it. During initial Blueprint creation, enter a new administrator email and a new password of at least 12 characters directly into Render as `FLASH_ADMIN_EMAIL` and `FLASH_ADMIN_PASSWORD`. Do not reuse the sandbox preview credential. Neon starts with a fresh database; local SQLite accounts and orders are not automatically transferred.
+
+Run `npm ci` in `flash-app/` before starting the application locally. When `DATABASE_URL` is omitted locally, the app retains its SQLite behavior.
 
 This configuration is for the testing demo only. It does not add actual payments or token transfers, and public deployment still requires review of authentication, account recovery, rate limiting, and operations.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## Verify
 

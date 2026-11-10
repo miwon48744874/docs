@@ -6,12 +6,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import pg from 'pg';
 
-test('accounts, demo limits and administrator authorization', async t => {
+for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and administrator authorization (${backend})`, { skip: backend === 'postgres' && !process.env.FLASH_TEST_DATABASE_URL }, async t => {
   const data = mkdtempSync(join(tmpdir(), 'flash-test-'));
   const password = randomBytes(16).toString('hex');
-  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
-  t.after(() => { child.kill(); rmSync(data, { recursive: true, force: true }); });
+  let pool, schema, databaseUrl = '';
+  if (backend === 'postgres') {
+    schema = `flash_test_${randomBytes(6).toString('hex')}`;
+    pool = new pg.Pool({ connectionString: process.env.FLASH_TEST_DATABASE_URL });
+    await pool.query(`CREATE SCHEMA "${schema}"`);
+    const url = new URL(process.env.FLASH_TEST_DATABASE_URL);
+    url.searchParams.set('options', `-c search_path=${schema}`);
+    databaseUrl = url.toString();
+  }
+  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: backend === 'postgres' ? '1' : '0', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(async () => {
+    if (child.exitCode === null) { const stopped = new Promise(resolve => child.once('exit', resolve)); child.kill(); await stopped; }
+    if (pool) { await pool.query(`DROP SCHEMA "${schema}" CASCADE`); await pool.end(); }
+    rmSync(data, { recursive: true, force: true });
+  });
   const port = await new Promise((resolve, reject) => {
     let output = '';
     child.stdout.on('data', chunk => { output += chunk; const match = output.match(/listening on (\d+)/); if (match) resolve(Number(match[1])); });
@@ -21,24 +35,28 @@ test('accounts, demo limits and administrator authorization', async t => {
   const base = `http://127.0.0.1:${port}`;
   async function call(path, { cookie, body, method = 'GET', headers = {} } = {}) {
     const response = await fetch(base + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'content-type': 'application/json', 'x-requested-with': 'flash-app' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
-    return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0], cookieAttributes: response.headers.get('set-cookie') };
   }
   assert.equal((await call('/api/admin/orders')).status, 401);
   const customer = await call('/api/signup', { method: 'POST', body: { email: 'customer@example.test', password, role: 'admin' } });
   assert.equal(customer.status, 200);
   assert.equal(customer.body.user.role, 'customer');
+  if (backend === 'postgres') { assert.match(customer.cookieAttributes, /Secure/); assert.match(customer.cookieAttributes, /HttpOnly/); assert.match(customer.cookieAttributes, /SameSite=Strict/); }
   assert.equal((await call('/api/admin/orders', { cookie: customer.cookie })).status, 403);
   assert.equal((await call('/api/orders', { method: 'POST', cookie: customer.cookie, body: { plan: 'Free demo', network: 'BEP20', address: 'invalid' } })).status, 400);
   const orderBody = { plan: 'Free demo', network: 'BEP20', address: '0x' + '1'.repeat(40) };
   const order = await call('/api/orders', { method: 'POST', cookie: customer.cookie, body: orderBody });
   assert.equal(order.status, 201);
   assert.equal((await call('/api/orders', { method: 'POST', cookie: customer.cookie, body: orderBody })).status, 409);
+  const another = await call('/api/signup', { method: 'POST', body: { email: 'concurrent@example.test', password } });
+  const concurrent = await Promise.all([call('/api/orders', { method: 'POST', cookie: another.cookie, body: orderBody }), call('/api/orders', { method: 'POST', cookie: another.cookie, body: orderBody })]);
+  assert.deepEqual(concurrent.map(result => result.status).sort(), [201, 409]);
   const other = await call('/api/signup', { method: 'POST', body: { email: 'other@example.test', password } });
   assert.equal((await call('/api/orders', { cookie: other.cookie })).body.orders.length, 0);
   assert.equal((await call(`/api/admin/orders/${order.body.id}`, { method: 'PATCH', cookie: customer.cookie, body: { status: 'completed' } })).status, 403);
   const admin = await call('/api/login', { method: 'POST', body: { email: 'admin@example.test', password } });
   assert.equal(admin.body.user.role, 'admin');
-  assert.equal((await call('/api/admin/orders', { cookie: admin.cookie })).body.orders.length, 1);
+  assert.equal((await call('/api/admin/orders', { cookie: admin.cookie })).body.orders.length, 2);
   assert.equal((await call('/api/admin/products', { cookie: customer.cookie })).status, 403);
   assert.equal((await call('/api/admin/products', { method: 'POST', cookie: customer.cookie, body: { name: 'Intruder', priceCents: 1, active: true } })).status, 403);
   assert.equal((await call('/api/admin/products', { method: 'POST', cookie: admin.cookie, body: { name: 'Invalid', priceCents: 1.5, active: true } })).status, 400);
@@ -78,7 +96,7 @@ test('legacy free-demo orders migrate without losing their limit', async t => {
   db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run('legacy-user', 'legacy@example.test', `${salt}:${scryptSync(password, salt, 64).toString('hex')}`, 'customer', timestamp);
   db.prepare('INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('legacy-order', 'legacy-user', 'Free demo', 'BEP20', '0x' + '1'.repeat(40), 'reviewing', timestamp, timestamp);
   db.close();
-  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, DATABASE_URL: '', FLASH_REQUIRE_POSTGRES: '0', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(() => { child.kill(); rmSync(data, { recursive: true, force: true }); });
   const port = await new Promise((resolve, reject) => {
     let output = '';
@@ -97,4 +115,60 @@ test('legacy free-demo orders migrate without losing their limit', async t => {
   assert.equal(existing.orders[0].product_id, 'free-demo');
   const repeated = await fetch(base + '/api/orders', { method: 'POST', headers: { cookie, 'content-type': 'application/json', 'x-requested-with': 'flash-app' }, body: JSON.stringify({ plan: 'Free demo', network: 'BEP20', address: '0x' + '1'.repeat(40) }) });
   assert.equal(repeated.status, 409);
+});
+
+
+test('production configuration refuses ephemeral SQLite when PostgreSQL is required', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'flash-require-db-'));
+  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, PORT: '0', FLASH_DATA_DIR: data, DATABASE_URL: '', FLASH_REQUIRE_POSTGRES: '1', FLASH_ADMIN_EMAIL: '', FLASH_ADMIN_PASSWORD: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let errors = '';
+  child.stderr.on('data', chunk => { errors += chunk; });
+  const code = await new Promise(resolve => child.once('exit', resolve));
+  try { assert.notEqual(code, 0); assert.match(errors, /DATABASE_URL is required/); }
+  finally { rmSync(data, { recursive: true, force: true }); }
+});
+
+test('PostgreSQL keeps accounts, sessions, orders and products across restarts', { skip: !process.env.FLASH_TEST_DATABASE_URL }, async t => {
+  const data = mkdtempSync(join(tmpdir(), 'flash-pg-restart-'));
+  const password = randomBytes(16).toString('hex');
+  const schema = `flash_restart_${randomBytes(6).toString('hex')}`;
+  const pool = new pg.Pool({ connectionString: process.env.FLASH_TEST_DATABASE_URL });
+  await pool.query(`CREATE SCHEMA "${schema}"`);
+  const url = new URL(process.env.FLASH_TEST_DATABASE_URL);
+  url.searchParams.set('options', `-c search_path=${schema}`);
+  let child;
+  async function stop() {
+    if (child && child.exitCode === null) { const done = new Promise(resolve => child.once('exit', resolve)); child.kill(); await done; }
+  }
+  t.after(async () => { await stop(); await pool.query(`DROP SCHEMA "${schema}" CASCADE`); await pool.end(); rmSync(data, { recursive: true, force: true }); });
+  async function start() {
+    child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, DATABASE_URL: url.toString(), FLASH_REQUIRE_POSTGRES: '1', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const port = await new Promise((resolve, reject) => {
+      let output = '';
+      child.stdout.on('data', chunk => { output += chunk; const match = output.match(/listening on (\d+)/); if (match) resolve(Number(match[1])); });
+      child.once('exit', code => reject(new Error(`Server exited before startup: ${code}`)));
+      child.once('error', reject);
+    });
+    return `http://127.0.0.1:${port}`;
+  }
+  async function call(base, path, { cookie, body, method = 'GET' } = {}) {
+    const response = await fetch(base + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'content-type': 'application/json', 'x-requested-with': 'flash-app' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  }
+  let base = await start();
+  const customer = await call(base, '/api/signup', { method: 'POST', body: { email: 'customer@example.test', password } });
+  assert.equal(customer.status, 200);
+  const order = await call(base, '/api/orders', { method: 'POST', cookie: customer.cookie, body: { plan: 'Free demo', network: 'BEP20', address: '0x' + '1'.repeat(40) } });
+  assert.equal(order.status, 201);
+  const admin = await call(base, '/api/login', { method: 'POST', body: { email: 'admin@example.test', password } });
+  assert.equal(admin.status, 200);
+  assert.equal((await call(base, `/api/admin/orders/${order.body.id}`, { method: 'PATCH', cookie: admin.cookie, body: { status: 'reviewing' } })).status, 200);
+  assert.equal((await call(base, '/api/admin/products', { method: 'POST', cookie: admin.cookie, body: { name: 'Persistent package', priceCents: 987, active: true } })).status, 201);
+  await stop();
+  base = await start();
+  assert.equal((await call(base, '/api/session', { cookie: customer.cookie })).body.user.email, 'customer@example.test');
+  const restored = await call(base, '/api/orders', { cookie: customer.cookie });
+  assert.equal(restored.body.orders[0].id, order.body.id);
+  assert.equal(restored.body.orders[0].status, 'reviewing');
+  assert.ok((await call(base, '/api/products')).body.products.some(product => product.name === 'Persistent package' && product.price_cents === 987));
 });
