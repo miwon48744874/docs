@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { openDatabase, isUniqueViolation } from './database.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { isIP } from 'node:net';
 
 const root = import.meta.dirname;
 const dataDir = process.env.FLASH_DATA_DIR || join(root, 'data');
@@ -67,6 +68,35 @@ function allowAttempt(req) {
 }
 const ordersForUser = db.prepare('SELECT id, plan, product_id, price_cents, network, address, status, created_at, updated_at FROM orders WHERE user_id = ? ORDER BY created_at DESC');
 const allOrders = db.prepare('SELECT orders.id, orders.plan, orders.product_id, orders.price_cents, orders.network, orders.address, orders.status, orders.created_at, orders.updated_at, users.email FROM orders JOIN users ON users.id = orders.user_id ORDER BY orders.created_at DESC');
+const insertVisit = db.prepare('INSERT INTO visits (id, ip, visited_at) VALUES (?, ?, ?)');
+const deleteOldVisits = db.prepare('DELETE FROM visits WHERE visited_at < ?');
+const recentVisits = db.prepare('SELECT ip, visited_at FROM visits WHERE visited_at >= ? ORDER BY visited_at DESC LIMIT 200');
+const visitCutoff = () => new Date(Date.now() - 30 * 86400_000).toISOString();
+let lastVisitCleanup = 0;
+async function cleanVisits(force = false) {
+  if (!force && Date.now() - lastVisitCleanup < 300_000) return;
+  await deleteOldVisits.run(visitCutoff());
+  lastVisitCleanup = Date.now();
+}
+function visitorAddress(req) {
+  let address;
+  if (process.env.FLASH_TRUST_PROXY === '1') {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded !== 'string') return null;
+    address = forwarded.split(',').at(-1).trim();
+  } else address = req.socket.remoteAddress || '';
+  if (address.startsWith('::ffff:') && isIP(address.slice(7)) === 4) address = address.slice(7);
+  return address.length <= 45 && !address.includes('%') && isIP(address) ? address : null;
+}
+async function recordVisit(req) {
+  const destination = req.headers['sec-fetch-dest'];
+  const legacyBrowser = !destination && /text\/html/i.test(req.headers.accept || '') && /^Mozilla\//i.test(req.headers['user-agent'] || '');
+  if (destination !== 'document' && !legacyBrowser) return;
+  const address = visitorAddress(req);
+  if (!address) return;
+  await insertVisit.run(randomUUID(), address, now());
+  await cleanVisits();
+}
 async function api(req, res, path) {
   if (req.method !== 'GET') {
     if (req.headers['x-requested-with'] !== 'flash-app' || !String(req.headers['content-type']).startsWith('application/json')) return json(res, 403, { error: 'Invalid request.' });
@@ -148,6 +178,11 @@ async function api(req, res, path) {
     } catch (error) { if (isUniqueViolation(error)) return json(res, 409, { error: 'A product with this name already exists.' }); throw error; }
     return json(res, productMatch ? 200 : 201, { id: productId });
   }
+  if (path === '/api/admin/visits' && req.method === 'GET') {
+    if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
+    await cleanVisits(true);
+    return json(res, 200, { visits: await recentVisits.all(visitCutoff()) });
+  }
   if (path === '/api/admin/orders' && req.method === 'GET') {
     if (user.role !== 'admin') return json(res, 403, { error: 'Administrator access required.' });
     return json(res, 200, { orders: await allOrders.all() });
@@ -175,6 +210,9 @@ const server = createServer(async (req, res) => {
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed.' });
     const file = files[path] || (['/sign-in', '/sign-up', '/dashboard', '/admin'].includes(path) ? files['/'] : null);
     if (!file) return json(res, 404, { error: 'Not found.' });
+    if (file === files['/']) {
+      try { await recordVisit(req); } catch { console.error('Visit recording failed.'); }
+    }
     res.writeHead(200, { 'Content-Type': `${file[1]}; charset=utf-8`, 'Cache-Control': 'no-cache' });
     res.end(readFileSync(join(root, 'public', file[0])));
   } catch (error) {

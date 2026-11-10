@@ -20,7 +20,7 @@ for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and ad
     url.searchParams.set('options', `-c search_path=${schema}`);
     databaseUrl = url.toString();
   }
-  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: backend === 'postgres' ? '1' : '0', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [join(import.meta.dirname, 'server.mjs')], { env: { ...process.env, DATABASE_URL: databaseUrl, FLASH_REQUIRE_POSTGRES: backend === 'postgres' ? '1' : '0', FLASH_SECURE_COOKIE: backend === 'postgres' ? '1' : '0', FLASH_TRUST_PROXY: backend === 'postgres' ? '1' : '0', PORT: '0', FLASH_DATA_DIR: data, FLASH_ADMIN_EMAIL: 'admin@example.test', FLASH_ADMIN_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(async () => {
     if (child.exitCode === null) { const stopped = new Promise(resolve => child.once('exit', resolve)); child.kill(); await stopped; }
     if (pool) { await pool.query(`DROP SCHEMA "${schema}" CASCADE`); await pool.end(); }
@@ -37,12 +37,25 @@ for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and ad
     const response = await fetch(base + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'content-type': 'application/json', 'x-requested-with': 'flash-app' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0], cookieAttributes: response.headers.get('set-cookie') };
   }
+  assert.equal((await call('/api/admin/visits')).status, 401);
+  const navigationHeaders = { 'sec-fetch-dest': 'document', 'x-forwarded-for': '203.0.113.9, 198.51.100.12' };
+  assert.equal((await fetch(base + '/', { headers: navigationHeaders })).status, 200);
+  assert.equal((await fetch(base + '/style.css', { headers: navigationHeaders })).status, 200);
+  assert.equal((await fetch(base + '/')).status, 200);
+  assert.equal((await fetch(base + '/', { headers: { accept: 'text/html', 'user-agent': 'Render-Healthcheck' } })).status, 200);
+  assert.equal((await fetch(base + '/', { headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0', 'x-forwarded-for': '192.0.2.13' } })).status, 200);
+  if (backend === 'postgres') {
+    assert.equal((await fetch(base + '/', { headers: { 'sec-fetch-dest': 'document', 'x-forwarded-for': 'invalid' } })).status, 200);
+    assert.equal((await fetch(base + '/', { headers: { 'sec-fetch-dest': 'document', 'x-forwarded-for': 'fe80::1%eth0' } })).status, 200);
+    assert.equal((await fetch(base + '/sign-in', { headers: { 'sec-fetch-dest': 'document', 'x-forwarded-for': '2001:db8::1' } })).status, 200);
+  }
   assert.equal((await call('/api/admin/orders')).status, 401);
   const customer = await call('/api/signup', { method: 'POST', body: { email: 'customer@example.test', password, role: 'admin' } });
   assert.equal(customer.status, 200);
   assert.equal(customer.body.user.role, 'customer');
   if (backend === 'postgres') { assert.match(customer.cookieAttributes, /Secure/); assert.match(customer.cookieAttributes, /HttpOnly/); assert.match(customer.cookieAttributes, /SameSite=Strict/); }
   assert.equal((await call('/api/admin/orders', { cookie: customer.cookie })).status, 403);
+  assert.equal((await call('/api/admin/visits', { cookie: customer.cookie })).status, 403);
   assert.equal((await call('/api/orders', { method: 'POST', cookie: customer.cookie, body: { plan: 'Free demo', network: 'BEP20', address: 'invalid' } })).status, 400);
   const orderBody = { plan: 'Free demo', network: 'BEP20', address: '0x' + '1'.repeat(40) };
   const order = await call('/api/orders', { method: 'POST', cookie: customer.cookie, body: orderBody });
@@ -56,6 +69,18 @@ for (const backend of ['sqlite', 'postgres']) test(`accounts, demo limits and ad
   assert.equal((await call(`/api/admin/orders/${order.body.id}`, { method: 'PATCH', cookie: customer.cookie, body: { status: 'completed' } })).status, 403);
   const admin = await call('/api/login', { method: 'POST', body: { email: 'admin@example.test', password } });
   assert.equal(admin.body.user.role, 'admin');
+  if (backend === 'postgres') await pool.query(`INSERT INTO "${schema}".visits (id, ip, visited_at) VALUES ($1, $2, $3)`, ['old-visit', '192.0.2.4', '2000-01-01T00:00:00.000Z']);
+  else { const direct = new DatabaseSync(join(data, 'app.sqlite')); direct.prepare('INSERT INTO visits (id, ip, visited_at) VALUES (?, ?, ?)').run('old-visit', '192.0.2.4', '2000-01-01T00:00:00.000Z'); direct.close(); }
+  const visitResult = await call('/api/admin/visits', { cookie: admin.cookie });
+  assert.equal(visitResult.status, 200);
+  assert.equal(visitResult.body.visits.length, backend === 'postgres' ? 3 : 2);
+  assert.ok(visitResult.body.visits.some(visit => visit.ip === (backend === 'postgres' ? '198.51.100.12' : '127.0.0.1')));
+  assert.equal(visitResult.body.visits.some(visit => visit.ip === '203.0.113.9' || visit.ip === '192.0.2.4'), false);
+  if (backend === 'postgres') {
+    assert.ok(visitResult.body.visits.some(visit => visit.ip === '2001:db8::1'));
+    assert.ok(visitResult.body.visits.some(visit => visit.ip === '192.0.2.13'));
+    assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".visits WHERE id = $1`, ['old-visit'])).rows[0].count, 0);
+  } else { const direct = new DatabaseSync(join(data, 'app.sqlite')); assert.equal(direct.prepare('SELECT count(*) AS count FROM visits WHERE id = ?').get('old-visit').count, 0); direct.close(); }
   assert.equal((await call('/api/admin/orders', { cookie: admin.cookie })).body.orders.length, 2);
   assert.equal((await call('/api/admin/products', { cookie: customer.cookie })).status, 403);
   assert.equal((await call('/api/admin/products', { method: 'POST', cookie: customer.cookie, body: { name: 'Intruder', priceCents: 1, active: true } })).status, 403);
@@ -156,6 +181,7 @@ test('PostgreSQL keeps accounts, sessions, orders and products across restarts',
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   let base = await start();
+  assert.equal((await fetch(base + '/', { headers: { 'sec-fetch-dest': 'document' } })).status, 200);
   const customer = await call(base, '/api/signup', { method: 'POST', body: { email: 'customer@example.test', password } });
   assert.equal(customer.status, 200);
   const order = await call(base, '/api/orders', { method: 'POST', cookie: customer.cookie, body: { plan: 'Free demo', network: 'BEP20', address: '0x' + '1'.repeat(40) } });
@@ -171,4 +197,7 @@ test('PostgreSQL keeps accounts, sessions, orders and products across restarts',
   assert.equal(restored.body.orders[0].id, order.body.id);
   assert.equal(restored.body.orders[0].status, 'reviewing');
   assert.ok((await call(base, '/api/products')).body.products.some(product => product.name === 'Persistent package' && product.price_cents === 987));
+  const visits = await call(base, '/api/admin/visits', { cookie: admin.cookie });
+  assert.equal(visits.status, 200);
+  assert.equal(visits.body.visits.length, 1);
 });

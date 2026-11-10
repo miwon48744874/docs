@@ -18,6 +18,8 @@ export async function openDatabase({ url, dataDir, requirePostgres = false }) {
       CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, price_cents INTEGER NOT NULL CHECK(price_cents >= 0), active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), plan TEXT NOT NULL, network TEXT NOT NULL, address TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS one_demo_per_user ON orders(user_id) WHERE plan = 'Free demo';
+      CREATE TABLE IF NOT EXISTS visits (id TEXT PRIMARY KEY, ip TEXT NOT NULL, visited_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS visits_visited_at_idx ON visits(visited_at);
     `);
     const columns = db.prepare('PRAGMA table_info(orders)').all().map(column => column.name);
     db.exec('BEGIN');
@@ -43,6 +45,8 @@ export async function openDatabase({ url, dataDir, requirePostgres = false }) {
       CREATE UNIQUE INDEX IF NOT EXISTS products_name_case_insensitive ON products (lower(name COLLATE "C"));
       CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), plan TEXT NOT NULL, network TEXT NOT NULL, address TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS one_demo_per_user ON orders(user_id) WHERE plan = 'Free demo';
+      CREATE TABLE IF NOT EXISTS visits (id TEXT PRIMARY KEY, ip TEXT NOT NULL, visited_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS visits_visited_at_idx ON visits(visited_at);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES products(id);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_cents INTEGER;
     `);

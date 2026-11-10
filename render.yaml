@@ -15,6 +15,8 @@ services:
         value: "1"
       - key: FLASH_SECURE_COOKIE
         value: "1"
+      - key: FLASH_TRUST_PROXY
+        value: "1"
       - key: DATABASE_URL
         sync: false
       - key: FLASH_ADMIN_EMAIL

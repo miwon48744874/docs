@@ -45,7 +45,25 @@ This configuration is for the testing demo only. It does not add actual payments
 
 <!-- /coderabbit-ai-generated:v1 -->
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:df2cc2ad45591c8024f06059b380fc05283fc9e3e6387223ed81f71a90fb8659 -->
+
+## Visit records
+
+The administrator page shows up to 200 recent browser page visits with IP address and visit time. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:085bbf9e646f932894a57afa01d63575e70e299b8b581f051b3a99545169047e -->
+
+Browser document navigations are recorded using `Sec-Fetch-Dest: document` or, for older browsers, an HTML accept header and browser user agent. API, asset, and typical health-check requests are not logged.
+
+<!-- /coderabbit-ai-generated:v1 --> Records older than 30 days are removed when the application is active or the list is refreshed. A visitor notice is shown on the site.
+
+Without `FLASH_TRUST_PROXY`, the server uses the socket address and ignores forwarded headers. When `FLASH_TRUST_PROXY=1`, it uses the final `X-Forwarded-For` entry and skips recording if it is missing or invalid. Enable this only behind a trusted proxy that appends the actual client address; verify that behavior for the deployed host. The Render configuration enables this option, but actual Render visitor-IP behavior still needs verification after deployment. VPNs and proxies can mask a visitor’s own address.
+
 ## Verify
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 <!-- /coderabbit-ai-generated:v1 -->
 
