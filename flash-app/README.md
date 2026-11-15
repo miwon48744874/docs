@@ -86,3 +86,11 @@ node --test flash-app/test.mjs
 ```
 
 This is a local demonstration, not a production-ready service. Deployment would require a persistent database and a review of authentication, account recovery, rate limiting, security, and operational controls.
+
+## Administrator member details
+
+The admin-only `/api/admin/members` endpoint and member panel show email (login ID), account ID, role, registration time, last successful login, last authenticated API activity, and successful login count. Search by email or account ID and browse pages of 50 members. Times are displayed in Asia/Seoul. Refresh the panel to fetch current records.
+
+Passwords remain salted scrypt hashes; neither passwords nor hashes nor session tokens are returned by the member API. The additive `member_activity` table works with SQLite and PostgreSQL without modifying existing accounts. Tracking starts when this feature is deployed: old activity cannot be reconstructed. Signup auto-login counts once; failed logins do not count. Last activity is updated at most once per minute on authenticated API requests and is not an online-status or session-duration indicator. Existing sessions can establish last activity without inventing a past login.
+
+Run `npm test` in `flash-app` for account, authorization, migration, member pagination and persistence checks. PostgreSQL integration tests require a dedicated `FLASH_TEST_DATABASE_URL`.
