@@ -8,6 +8,7 @@
   <title>플래시 랩 · 테스트 워크스페이스</title>
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/location-sharing.js"></script>
 </head>
 <body>
   <header class="topbar"><div class="nav-wrap">
@@ -50,6 +51,18 @@
     </div>
     <div id="page-content" hidden></div>
   </main>
+  <section class="container section panel" aria-labelledby="location-heading">
+    <h2 id="location-heading">선택 사항 · 현재 위치 공유</h2>
+    <p>현재 접속 위치를 관리자에게 알려주고 싶을 때만 이용하세요. 먼저 위치를 미리 보고, 전송 버튼을 누르면 좌표·오차 범위·공개 IP·전송 시간이 관리자에게 전달되어 24시간 보관됩니다. 다른 방문자는 볼 수 없습니다.</p>
+    <p>위치를 공유하지 않아도 사이트를 이용할 수 있습니다. 브라우저의 위치 허용만으로는 전송되지 않습니다.</p>
+    <button id="location-request" type="button" class="outline-btn">내 위치 확인 · 권한 요청</button>
+    <p id="location-status" role="status" aria-live="polite"></p>
+    <div id="location-preview" hidden>
+      <p id="location-coordinates"></p>
+      <button id="location-send" type="button" class="gradient-btn">이 위치를 관리자에게 전송</button>
+      <button id="location-cancel" type="button" class="outline-btn">취소</button>
+    </div>
+  </section>
   <footer class="container site-footer"><a class="brand" href="/">플래시 <span>랩</span></a><p>테스트를 위한 더 간결한 워크스페이스.</p><div><a href="/dashboard">대시보드</a><a href="/account">내 계정</a><a href="https://t.me/qpqp102" target="_blank" rel="noopener noreferrer">지원</a></div><p class="privacy-notice">방문자의 공개 IP와 접속 시간을 관리자에게 표시하며, 기록은 30일간 보관됩니다. VPN·통신사에 따라 보이는 공개 IP는 달라질 수 있습니다.</p><small>© 2026 플래시 랩 · 시뮬레이션 작업 공간</small></footer>
 </body>
 </html>

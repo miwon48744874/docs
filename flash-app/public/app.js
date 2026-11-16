@@ -346,7 +346,7 @@ async function adminPage(user) {
   }
   $(
     "#page-content"
-  ).innerHTML = `<div class="page-shell"><div class="page-top"><div><span class="admin-badge">관리자</span><h1>관리자 워크스페이스</h1><p class="subtext">주문과 상품, 방문 기록을 한곳에서 관리하세요.</p></div><a class="outline-btn" href="/dashboard">고객 대시보드 →</a></div><section class="panel"><div id="message" hidden role="alert"></div><h2>주문 관리</h2><p>상태 변경은 테스트 검토 결과를 기록합니다.</p><div class="order-filters"><label class="field"><span>주문 검색</span><input id="order-search" type="search" placeholder="요청 번호, 이메일, 주소" autocomplete="off"></label><label class="field"><span>상태</span><select id="order-status-filter"><option value="">전체 상태</option><option value="pending">접수</option><option value="reviewing">검토 중</option><option value="completed">완료</option><option value="rejected">반려</option></select></label></div><p id="order-count" role="status" aria-live="polite"></p><div id="orders" class="order-list"></div></section><section class="panel visit-panel" id="visitors"><h2>방문자 IP</h2><p>사이트 방문 시 기록됩니다. 이 화면은 5초마다 자동 갱신됩니다. 최근 30일 중 최대 200개를 표시합니다.</p><button id="visit-refresh" class="logout" type="button">새로고침</button><p id="visit-tracking" role="status"></p><div id="visit-list" class="order-list" aria-live="polite"></div></section><section class="panel product-panel"><h2>상품 · 가격 관리</h2><p>가격은 시뮬레이션용입니다. 수정 전 주문의 상품명과 가격은 유지됩니다.</p><div id="product-message" hidden role="alert"></div><form id="new-product" class="product-form"><label class="field"><span>상품명</span><input name="name" required maxlength="80" placeholder="상품명"></label><label class="field"><span>가격 (미국 달러)</span><input name="price" required inputmode="decimal" placeholder="0.00"></label><label class="availability"><input name="active" type="checkbox" checked> 판매 표시</label><button class="gradient-btn" type="submit">상품 추가</button></form><div id="products" class="product-list"></div></section></div>`;
+  ).innerHTML = `<div class="page-shell"><div class="page-top"><div><span class="admin-badge">관리자</span><h1>관리자 워크스페이스</h1><p class="subtext">주문과 상품, 방문 기록을 한곳에서 관리하세요.</p></div><a class="outline-btn" href="/dashboard">고객 대시보드 →</a></div><section class="panel"><div id="message" hidden role="alert"></div><h2>주문 관리</h2><p>상태 변경은 테스트 검토 결과를 기록합니다.</p><div class="order-filters"><label class="field"><span>주문 검색</span><input id="order-search" type="search" placeholder="요청 번호, 이메일, 주소" autocomplete="off"></label><label class="field"><span>상태</span><select id="order-status-filter"><option value="">전체 상태</option><option value="pending">접수</option><option value="reviewing">검토 중</option><option value="completed">완료</option><option value="rejected">반려</option></select></label></div><p id="order-count" role="status" aria-live="polite"></p><div id="orders" class="order-list"></div></section><section class="panel visit-panel" id="visitors"><h2>방문자 IP</h2><p>사이트 방문 시 기록됩니다. 이 화면은 5초마다 자동 갱신됩니다. 최근 30일 중 최대 200개를 표시합니다.</p><button id="visit-refresh" class="logout" type="button">새로고침</button><p id="visit-tracking" role="status"></p><div id="visit-list" class="order-list" aria-live="polite"></div><h3>직접 공유한 위치</h3><p>방문자가 확인 후 전송한 위치만 표시합니다. 최근 24시간 중 최대 200건이며, 기기 제공 값으로 정확성이나 신원은 보장되지 않습니다.</p><div id="location-list" class="order-list" aria-live="polite"></div></section><section class="panel product-panel"><h2>상품 · 가격 관리</h2><p>가격은 시뮬레이션용입니다. 수정 전 주문의 상품명과 가격은 유지됩니다.</p><div id="product-message" hidden role="alert"></div><form id="new-product" class="product-form"><label class="field"><span>상품명</span><input name="name" required maxlength="80" placeholder="상품명"></label><label class="field"><span>가격 (미국 달러)</span><input name="price" required inputmode="decimal" placeholder="0.00"></label><label class="availability"><input name="active" type="checkbox" checked> 판매 표시</label><button class="gradient-btn" type="submit">상품 추가</button></form><div id="products" class="product-list"></div></section></div>`;
   mountMembers($("#page-content .page-shell"), api);
   let orders = [];
   function renderOrders() {
@@ -477,6 +477,21 @@ async function adminPage(user) {
     visitsLoading = true;
     try {
       const result = await api("/api/admin/visits");
+      $("#location-list").innerHTML =
+        (result.locations || [])
+          .map(
+            (item) =>
+              `<article class="order"><strong>${escapeHtml(
+                item.ip
+              )}</strong><p>위도 ${escapeHtml(
+                item.latitude
+              )} · 경도 ${escapeHtml(item.longitude)} · 오차 약 ${escapeHtml(
+                Math.round(item.accuracy)
+              )}m</p><p>공유 시간 · ${escapeHtml(
+                new Date(item.shared_at).toLocaleString("ko-KR")
+              )}</p></article>`
+          )
+          .join("") || '<p class="empty">직접 공유한 위치가 없습니다.</p>';
       const tracking = result.tracking;
       $("#visit-tracking").textContent = tracking
         ? `내 현재 공개 IP: ${tracking.currentIp || "확인 불가"} · 기록 방식: ${

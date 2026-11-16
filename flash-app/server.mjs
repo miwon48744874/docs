@@ -1,3 +1,4 @@
+import { locationShares } from "./locations.mjs";
 import { memberTracking } from "./members.mjs";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -22,6 +23,7 @@ const db = await openDatabase({
 });
 
 const members = await memberTracking(db);
+const locations = await locationShares(db);
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 function passwordHash(password) {
@@ -202,6 +204,20 @@ async function api(req, res, path) {
           error: "허용되지 않은 사이트에서 보낸 요청입니다.",
         });
     }
+  }
+  if (path === "/api/location-shares" && req.method === "POST") {
+    const body = await bodyJson(req);
+    if (!locations.valid(body))
+      return json(res, 400, {
+        error: "위치 공유 동의와 올바른 좌표가 필요합니다.",
+      });
+    const ip = visitorAddress(req);
+    if (!ip)
+      return json(res, 503, { error: "접속 정보를 확인하지 못했습니다." });
+    if (!locations.allow(ip))
+      return json(res, 429, { error: "잠시 후 다시 공유해 주세요." });
+    await locations.save(ip, body);
+    return json(res, 201, { ok: true });
   }
   if (path === "/api/products" && req.method === "GET")
     return json(res, 200, {
@@ -461,6 +477,7 @@ async function api(req, res, path) {
     await cleanVisits(true);
     return json(res, 200, {
       visits: await recentVisits.all(visitCutoff()),
+      locations: await locations.recent(),
       tracking: {
         source: visitorSource(),
         currentIp: visitorAddress(req),
@@ -492,6 +509,7 @@ async function api(req, res, path) {
   return json(res, 404, { error: "요청한 항목을 찾을 수 없습니다." });
 }
 const files = {
+  "/location-sharing.js": ["location-sharing.js", "text/javascript"],
   "/admin-members.js": ["admin-members.js", "text/javascript"],
   "/": ["index.html", "text/html"],
   "/app.js": ["app.js", "text/javascript"],

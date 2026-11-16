@@ -94,3 +94,10 @@ The admin-only `/api/admin/members` endpoint and member panel show email (login 
 Passwords remain salted scrypt hashes; neither passwords nor hashes nor session tokens are returned by the member API. The additive `member_activity` table works with SQLite and PostgreSQL without modifying existing accounts. Tracking starts when this feature is deployed: old activity cannot be reconstructed. Signup auto-login counts once; failed logins do not count. Last activity is updated at most once per minute on authenticated API requests and is not an online-status or session-duration indicator. Existing sessions can establish last activity without inventing a past login.
 
 Run `npm test` in `flash-app` for account, authorization, migration, member pagination and persistence checks. PostgreSQL integration tests require a dedicated `FLASH_TEST_DATABASE_URL`.
+
+
+### Optional location sharing
+
+The location panel appears on every page. No location request occurs on page load. Visitors first choose “내 위치 확인 · 권한 요청”, grant browser permission, review the coordinates and accuracy, then separately choose “이 위치를 관리자에게 전송”. Denial and cancellation transmit no coordinates and do not block the site. HTTPS and browser geolocation support are required. Permission previously granted may not show another browser prompt.
+
+Only an explicit confirmation sends coordinates, accuracy, server-observed public IP and server timestamp to a separate location_shares table. Administrators see at most 200 shares from the past 24 hours in the visitor panel. Expired rows are excluded immediately from reads and deleted on startup, writes, reads, and every minute while the server is running. One submission per public IP per minute limits abuse; shared networks share this limit. Browser coordinates can be inaccurate or forged; these records do not prove identity, reveal a hidden VPN IP, or continuously track a visitor. No phone number, photos or contacts are collected by this feature.
